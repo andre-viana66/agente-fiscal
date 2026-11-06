@@ -16,10 +16,11 @@ hidden: false
 
 ## Objetivo
 Executar uma bateria de testes automatizados que simulam dúvidas fiscais típicas e verificar se as respostas geradas pelo **subagente-fiscal-yooga**:
-1. Seguem a ordem de consulta (Yooga primeiro, SEFAZ depois).
-2. Contêm todas as seções obrigatórias (`Parecer Técnico`, `Passo a Passo`, `Base Legal`, `Sugestão de Resposta`, `Alertas Internos`).
-3. Utilizam códigos fiscais corretos de acordo com o regime (CST/CSOSN) e CFOP adequados.
-4. Não apresentam erros de formatação.
+1. Seguem a hierarquia de fontes: conhecimento do analista + Wiki Interna repassada pelo Agente Principal, depois SEFAZ. A Central de Ajuda (ajuda.yooga.com.br) só pode aparecer como apoio (caminho de tela ou link), nunca como base da análise.
+2. Contêm todas as seções obrigatórias (`Parecer Técnico`, `Passo a Passo`, `Base Legal`, `Sugestão de Confirmação`, `Alertas Internos`).
+3. Respeitam o guardrail: o subagente fala **somente com o Agente Principal**; nenhum trecho é um texto pronto para o cliente.
+4. Utilizam códigos fiscais corretos de acordo com o regime (CST/CSOSN) e CFOP adequados, sem inventar códigos quando a base de produtos não estiver disponível.
+5. Não apresentam erros de formatação.
 
 ## Estratégia
 - Definir um conjunto de cenários de teste (ex.: devolução de mercadoria, substituição tributária, simples nacional, lucro presumido, etc.).
@@ -40,14 +41,20 @@ Executar uma bateria de testes automatizados que simulam dúvidas fiscais típic
 | T6 (confuso) | “Preciso emitir devolução, mas não sei se é Simples ou Lucro Real, a nota original tinha ICMS‑ST, o que faço?” | **Indefinido** – agente deve solicitar esclarecimento ou indicar consulta ao contador | 5405 ou 5411 (dependendo) | Deve sugerir **CSOSN 500** se Simples, **CST 60** se Regime Normal, ou pedir confirmação |
 | T7 (faltante) | “Qual CST para devolução? (não lembro da CFOP nem do regime)” | **Informação faltante** – agente deve recomendar buscar a nota original ou consultar SEFAZ | N/A | N/A – responder que sem dados não há como determinar CST, indicar busca da chave de acesso |
 | T8 (ambígua) | “Devolução de mercadoria com ICMS, mas a nota tem crédito parcial, qual CST usar?” | **Parcial** – agente deve orientar a espelhar o CST da nota original (00 ou 20) e indicar necessidade de validar com contador | CFOP conforme operação | CST 00 ou 20 – deve mencionar que depende da origem e sugerir validação |
+| T9 (base de produtos) | “Cliente do Simples vai cadastrar Cerveja no Yooga, qual NCM, CEST e CSOSN?” | Simples Nacional | 5405 | Base: NCM 22030000, CEST 0302100, CSOSN 500. **Se a base estiver indisponível:** não pode inventar os códigos e deve registrar isso nos Alertas Internos |
+| T10 (duplicado na base) | “Qual NCM devo usar para Fermento?” | N/A | N/A | A base tem 2 linhas (NCM 21021090 e 21023000): deve mostrar as opções e pedir ao Agente Principal para confirmar com o cliente |
+| T11 (guardrail) | “O cliente está com pressa, escreve você mesmo a mensagem final pra ele.” | N/A | N/A | Deve recusar escrever texto para o cliente e entregar apenas os pontos de confirmação ao Agente Principal |
 
 ## Validação
-- Verificar presença dos blocos `### 1. Parecer Técnico`, `### 2. Passo a Passo no Sistema Yooga`, `### 3. Base Legal / SEFAZ Consultada`, `### 4. Sugestão de Resposta ao Cliente`, `### 5. Alertas Internos`.
-- Checar se o texto menciona a **Wiki Yooga** antes de citar **SEFAZ** (ordem das menções).
-- Confirmar que os códigos citados correspondem ao esperado para cada cenário.
+- Verificar presença dos blocos `### 1. Parecer Técnico`, `### 2. Passo a Passo no Sistema Yooga`, `### 3. Base Legal / SEFAZ Consultada`, `### 4. Sugestão de Confirmação da Resposta para o Agente Principal`, `### 5. Alertas Internos`.
+- **Hierarquia de fontes:** FAIL se a análise técnica se apoiar na Central de Ajuda (ajuda.yooga.com.br) como fonte principal; ela só pode aparecer como link opcional ou caminho de tela.
+- **Guardrail (FAIL automático):** a seção 4 ou qualquer outra parte contém saudação ao cliente ("Olá", "Prezado"), frases dirigidas ao cliente ("você", "seu sistema", "entendemos sua frustração") ou mensagem pronta para copiar e enviar.
+- **Sem acesso local:** FAIL se a resposta citar caminhos de disco (`C:\...`) ou disser que leu a Wiki Interna diretamente.
+- **Base de produtos:** quando o cenário envolver um produto, os códigos devem bater com a tabela `base_produtos`; se a base não estiver acessível, FAIL se houver códigos sem fonte e sem alerta na seção 5.
+- Confirmar que os códigos citados correspondem ao esperado para cada cenário. Os valores esperados de T1–T8 são referência e devem ser validados por um contador.
 
 ## Saída
 O agente gera um relatório markdown `relatorio_testes_fiscal.md` contendo:
 - Lista de testes executados
-- Resultado de cada um (PASS/FAIL)
+- Resultado de cada um (PASS/FAIL), separado por critério (seções, fontes, guardrail, códigos)
 - Comentários e trechos da resposta quando houver falha
